@@ -26,7 +26,7 @@ const peerIdJack = {
   pubKey: "CAESIMK2YwjZ9I8/d7EpfNXD+kesf4PolWJkeVsZp+GbcyRZ",
 };
 
-const nodeBob = await createLibp2p({
+export const BobNode = await createLibp2p({
   peerId: await createFromJSON(peerIdBob),
   addresses: {
     listen: ["/ip4/0.0.0.0/tcp/0"],
@@ -37,7 +37,7 @@ const nodeBob = await createLibp2p({
   pubsub: gossipsub({ allowPublishToZeroPeers: true }),
 });
 
-const nodeAlice = await createLibp2p({
+export const AliceNode = await createLibp2p({
   peerId: await createFromJSON(peerIdAlice),
   addresses: {
     listen: ["/ip4/0.0.0.0/tcp/0"],
@@ -48,7 +48,7 @@ const nodeAlice = await createLibp2p({
   pubsub: gossipsub({ allowPublishToZeroPeers: true }),
 });
 
-const nodeJack = await createLibp2p({
+export const CharlieNode = await createLibp2p({
   peerId: await createFromJSON(peerIdJack),
   addresses: {
     listen: ["/ip4/0.0.0.0/tcp/0"],
@@ -58,5 +58,3 @@ const nodeJack = await createLibp2p({
   connectionEncryption: [noise()],
   pubsub: gossipsub({ allowPublishToZeroPeers: true }),
 });
-
-export const Libp2pNodes = [nodeBob, nodeAlice, nodeJack];

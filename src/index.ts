@@ -6,14 +6,18 @@ import {
   hasSubscription,
 } from "./utils.js";
 import { MessageSend } from "./types.js";
-import { get, IPFSNodes, Redis } from "./dbMeneger.js";
-import { Libp2pNodes } from "./nodeLibp2p.js";
+import { AliceIPFS, BobIPFS, CharlieIPFS, IPFSNodes } from "./db-manager.js";
+import { AliceNode, BobNode, CharlieNode } from "./node-libp2p.js";
+import { Redis } from "./redis.js";
+
+export const RedisClient = new Redis();
+
 export async function start() {
   const topic = "news";
 
-  await connect(Libp2pNodes[0], Libp2pNodes[1]);
-  await connect(Libp2pNodes[1], Libp2pNodes[2]);
-  await connect(Libp2pNodes[2], Libp2pNodes[0]);
+  await connect(BobNode, AliceNode);
+  await connect(AliceNode, CharlieNode);
+  await connect(CharlieNode, BobNode);
 
   const messageBob: MessageSend = {
     id: Date.now(),
@@ -33,35 +37,38 @@ export async function start() {
     message: "Hello everyone my name is Jack!",
   };
 
-  await sendMessage(Libp2pNodes[0], messageBob, topic, IPFSNodes[0]);
-  await sendMessage(Libp2pNodes[1], messageAlice, topic, IPFSNodes[1]);
-  await sendMessage(Libp2pNodes[2], messageJack, topic, IPFSNodes[2]);
+  await sendMessage(BobNode, messageBob, topic, BobIPFS);
+  await sendMessage(AliceNode, messageAlice, topic, AliceIPFS);
+  await sendMessage(CharlieNode, messageJack, topic, CharlieIPFS);
 
-  await receivedMessage(Libp2pNodes[0], IPFSNodes[0]);
-  await subscribe(Libp2pNodes[0], topic);
+  await receivedMessage(BobNode, BobIPFS);
+  await subscribe(BobNode, topic);
 
-  await receivedMessage(Libp2pNodes[1], IPFSNodes[1]);
-  await subscribe(Libp2pNodes[1], topic);
+  await receivedMessage(AliceNode, AliceIPFS);
+  await subscribe(AliceNode, topic);
 
-  await receivedMessage(Libp2pNodes[2], IPFSNodes[2]);
-  await subscribe(Libp2pNodes[2], topic);
+  await receivedMessage(CharlieNode, CharlieIPFS);
+  await subscribe(CharlieNode, topic);
 
-  await hasSubscription(Libp2pNodes[0], Libp2pNodes[1], topic);
-  await hasSubscription(Libp2pNodes[1], Libp2pNodes[2], topic);
+  await hasSubscription(BobNode, AliceNode, topic);
+  await hasSubscription(AliceNode, CharlieNode, topic);
 
-  const db = new Redis();
   console.log("messagesSend");
   console.log(
     "Bob",
-    JSON.parse(await db.get(`${Libp2pNodes[0].peerId.toString()}MessageSend`))
+    JSON.parse(await RedisClient.get(`${BobNode.peerId.toString()}MessageSend`))
   );
   console.log(
     "Alice",
-    JSON.parse(await db.get(`${Libp2pNodes[1].peerId.toString()}MessageSend`))
+    JSON.parse(
+      await RedisClient.get(`${AliceNode.peerId.toString()}MessageSend`)
+    )
   );
   console.log(
     "Jack",
-    JSON.parse(await db.get(`${Libp2pNodes[2].peerId.toString()}MessageSend`))
+    JSON.parse(
+      await RedisClient.get(`${CharlieNode.peerId.toString()}MessageSend`)
+    )
   );
 
   console.log("\n");
@@ -69,24 +76,24 @@ export async function start() {
   console.log(
     "Bob",
     JSON.parse(
-      await db.get(`${Libp2pNodes[0].peerId.toString()}MessageReceived`)
+      await RedisClient.get(`${BobNode.peerId.toString()}MessageReceived`)
     )
   );
   console.log(
     "ALice",
     JSON.parse(
-      await db.get(`${Libp2pNodes[1].peerId.toString()}MessageReceived`)
+      await RedisClient.get(`${AliceNode.peerId.toString()}MessageReceived`)
     )
   );
   console.log(
     "Jack",
     JSON.parse(
-      await db.get(`${Libp2pNodes[2].peerId.toString()}MessageReceived`)
+      await RedisClient.get(`${CharlieNode.peerId.toString()}MessageReceived`)
     )
   );
   // console.log(
   //   "getIPFS",
-  //   await get("QmaVXXFaB55fccYCitW4vie7cB2mZNMETZJnNtpDNYBKuT", IPFSNodes[2])
+  //   await get("QmaVXXFaB55fccYCitW4vie7cB2mZNMETZJnNtpDNYBKuT", CharlieIPFS)
   // );
 
   process.exit();
