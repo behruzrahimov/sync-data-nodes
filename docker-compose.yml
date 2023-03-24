@@ -1,0 +1,19 @@
+version: "3.2"
+services:
+  redis1:
+    image: "redis:alpine"
+    command: redis-server --requirepass 1234
+    ports:
+      - "6379:6379"
+    volumes:
+      - $PWD/db/redis-data:/var/lib/redis
+      - $PWD/db/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      node_net:
+        ipv4_address: 172.28.1.4
+networks:
+  node_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
