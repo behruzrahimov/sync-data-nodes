@@ -41,24 +41,24 @@ export async function sendMessage(
 }
 export async function receivedMessage(nodeLibp2p: Libp2p, nodeIPFS: any) {
   await nodeLibp2p.pubsub.addEventListener("message", async (evt) => {
-    console.log(
-      `${nodeLibp2p.peerId} received: ${uint8ArrayToString(
-        evt.detail.data
-      )} on topic ${evt.detail.topic}\n`
-    );
+    // console.log(
+    //   `${nodeLibp2p.peerId} received: ${uint8ArrayToString(
+    //     evt.detail.data
+    //   )} on topic ${evt.detail.topic}\n`
+    // );
   });
   const db = new Redis();
   const allData: string[] = [];
   for (const node of Libp2pNodes) {
     if (nodeLibp2p.peerId.toString() !== node.peerId.toString()) {
-      const res = await db.get(`${JSON.stringify(node.peerId)}MessageSend`);
+      const res = await db.get(`${node.peerId.toString()}MessageSend`);
       for (let parseElement of JSON.parse(res)) {
         allData.push(parseElement);
       }
     }
   }
   const res = await db.get(
-    `${JSON.stringify(nodeLibp2p.peerId)}MessageReceived`
+    `${nodeLibp2p.peerId.toString()}MessageReceived`
   );
   const someData: string[] = JSON.parse(res);
   if (someData.length === allData.length) {
@@ -66,13 +66,13 @@ export async function receivedMessage(nodeLibp2p: Libp2p, nodeIPFS: any) {
   }
   if (someData.length === 0) {
     const cid = await add(JSON.stringify(allData), nodeIPFS);
-    await db.add(`${JSON.stringify(nodeLibp2p.peerId)}MessageReceived`, cid);
+    await db.add(`${nodeLibp2p.peerId.toString()}MessageReceived`, cid);
     return;
   }
   if (someData.length !== 0 && someData.length < allData.length) {
     const res = syncData(someData, allData);
     const cid = await add(JSON.stringify(res), nodeIPFS);
-    await db.add(`${JSON.stringify(nodeLibp2p.peerId)}MessageReceived`, cid);
+    await db.add(`${nodeLibp2p.peerId.toString()}MessageReceived`, cid);
     return;
   }
 }
@@ -80,37 +80,6 @@ export async function receivedMessage(nodeLibp2p: Libp2p, nodeIPFS: any) {
 export async function subscribe(node: Libp2p, topic: string) {
   await node.pubsub.subscribe(topic);
 }
-// export async function save(
-//   nodeDB: Level<string, string>,
-//   key: string,
-//   data: string
-// ) {
-//   const savedMessages = await get(nodeDB, key);
-//   const checkData = JSON.parse(data);
-//   if (checkData.length > 0) {
-//     for (const message of checkData) {
-//       savedMessages.push(message);
-//     }
-//   } else {
-//     savedMessages.push(data);
-//   }
-//   const uniqueSavedMessages = [...new Set(savedMessages)];
-//
-//   await nodeDB.put(key, JSON.stringify(uniqueSavedMessages));
-// }
-//
-// export const get = async (DB: Level, key: string) => {
-//   const res: string[] = [];
-//   const data = await DB.iterator({ limit: 100 }).all();
-//   data.forEach((data) => {
-//     if (data[0] === key) {
-//       JSON.parse(data[1]).forEach((e: string) => {
-//         res.push(e);
-//       });
-//     }
-//   });
-//   return res;
-// };
 
 export async function hasSubscription(
   node1: Libp2p,
@@ -133,31 +102,6 @@ export async function delay(ms: number) {
   });
 }
 
-// function sync(allMessages: string[], nodeMessage: string[]) {
-//   if (allMessages.length === 0) {
-//     return [""];
-//   } else if (nodeMessage.length === 0) {
-//     return allMessages;
-//   }
-//   const latestNodeMessageTimeStamp = JSON.parse(
-//     nodeMessage[nodeMessage.length - 1]
-//   ).id;
-//   const latestAllMessageTimeStamp = JSON.parse(
-//     allMessages[allMessages.length - 1]
-//   ).id;
-//   if (latestNodeMessageTimeStamp !== latestAllMessageTimeStamp) {
-//     const newMessages = allMessages.filter(
-//       (message) => JSON.parse(message).id > latestNodeMessageTimeStamp
-//     );
-//     for (const newMessage of newMessages) {
-//       nodeMessage.push(newMessage);
-//     }
-//   } else {
-//     return allMessages;
-//   }
-//   return nodeMessage;
-// }
-
 function findIndex(someData: string[], allData: string[]) {
   const lastSD = someData[someData.length - 1];
   let index = 0;
@@ -169,7 +113,6 @@ function findIndex(someData: string[], allData: string[]) {
   }
   return index;
 }
-
 function syncData(someData: string[], allData: string[]) {
   const lastMessageIndex = findIndex(someData, allData);
   for (let i = lastMessageIndex; i < allData.length; i++) {
