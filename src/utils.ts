@@ -37,7 +37,7 @@ export async function sendMessage(
     });
   const cid = await add(JSON.stringify(message), nodeIPFS);
   const db = new Redis();
-  await db.add(`${JSON.stringify(nodeLibp2p.peerId)}MessageSend`, cid);
+  await db.add(`${nodeLibp2p.peerId.toString()}MessageSend`, cid);
 }
 export async function receivedMessage(nodeLibp2p: Libp2p, nodeIPFS: any) {
   await nodeLibp2p.pubsub.addEventListener("message", async (evt) => {
@@ -57,22 +57,18 @@ export async function receivedMessage(nodeLibp2p: Libp2p, nodeIPFS: any) {
       }
     }
   }
-  const res = await db.get(
-    `${nodeLibp2p.peerId.toString()}MessageReceived`
+  const someData: string[] = JSON.parse(
+    await db.get(`${nodeLibp2p.peerId.toString()}MessageReceived`)
   );
-  const someData: string[] = JSON.parse(res);
-  if (someData.length === allData.length) {
-    return;
-  }
-  if (someData.length === 0) {
-    const cid = await add(JSON.stringify(allData), nodeIPFS);
-    await db.add(`${nodeLibp2p.peerId.toString()}MessageReceived`, cid);
-    return;
-  }
-  if (someData.length !== 0 && someData.length < allData.length) {
-    const res = syncData(someData, allData);
-    const cid = await add(JSON.stringify(res), nodeIPFS);
-    await db.add(`${nodeLibp2p.peerId.toString()}MessageReceived`, cid);
+
+  if (someData.length < allData.length) {
+    for (const cid of allData) {
+      const find = someData.find((c) => c === cid);
+      if (!find) {
+        await db.add(`${nodeLibp2p.peerId.toString()}MessageReceived`, cid);
+      }
+    }
+  } else {
     return;
   }
 }
@@ -100,23 +96,4 @@ export async function delay(ms: number) {
   await new Promise<any>((resolve: any) => {
     setTimeout(() => resolve(), ms);
   });
-}
-
-function findIndex(someData: string[], allData: string[]) {
-  const lastSD = someData[someData.length - 1];
-  let index = 0;
-  for (let i = 0; i < allData.length; i++) {
-    if (lastSD === allData[i]) {
-      index = i;
-      break;
-    }
-  }
-  return index;
-}
-function syncData(someData: string[], allData: string[]) {
-  const lastMessageIndex = findIndex(someData, allData);
-  for (let i = lastMessageIndex; i < allData.length; i++) {
-    someData.push(allData[i]);
-  }
-  return someData;
 }
