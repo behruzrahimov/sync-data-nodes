@@ -1,6 +1,7 @@
 # Project exclude paths
 /_/
-/db/
+/db
 node_modules
 .idea
 .vscode
+ipfs
