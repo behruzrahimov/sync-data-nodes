@@ -1,8 +1,9 @@
 import { Libp2p } from "libp2p";
 import { MessageSend } from "./types.js";
 import { AliceNode, BobNode, CharlieNode } from "./node-libp2p.js";
-import { add } from "./redis.js";
-import { RedisClient } from "./index.js";
+import { add } from "./db-manager.js";
+import { IPFS } from "ipfs-core";
+import { Redis } from "./redis/redis.js";
 
 export function uint8ArrayToString(buf: Uint8Array) {
   return new TextDecoder().decode(buf);
@@ -29,7 +30,8 @@ export async function sendMessage(
   nodeLibp2p: Libp2p,
   message: MessageSend,
   topic: string,
-  nodeIPFS: any
+  nodeIPFS: IPFS,
+  redis: Redis
 ) {
   nodeLibp2p.pubsub
     .publish(topic, uint8ArrayFromString(JSON.stringify(message)))
@@ -37,43 +39,39 @@ export async function sendMessage(
       console.error(err);
     });
   const cid = await add(JSON.stringify(message), nodeIPFS);
-  await RedisClient.add(`${nodeLibp2p.peerId.toString()}MessageSend`, cid);
+  await redis.init();
+  await redis.add("MessageSend", cid);
+  await redis.destroy();
 }
-export async function receivedMessage(nodeLibp2p: Libp2p, nodeIPFS: any) {
-  let newMessage = "";
+export async function receivedMessage(nodeLibp2p: Libp2p, redis: Redis) {
   await nodeLibp2p.pubsub.addEventListener("message", async (evt) => {
     console.log(
       `${nodeLibp2p.peerId} received: ${uint8ArrayToString(
         evt.detail.data
       )} on topic ${evt.detail.topic}\n`
     );
-    newMessage = uint8ArrayToString(evt.detail.data);
   });
   const allData: string[] = [];
 
   const allNodes = [AliceNode, BobNode, CharlieNode];
   for (const node of allNodes) {
     if (nodeLibp2p.peerId.toString() !== node.peerId.toString()) {
-      const res = await RedisClient.get(`${node.peerId.toString()}MessageSend`);
+      await redis.init();
+      const res = await redis.get("MessageSend");
+      await redis.destroy();
       for (let parseElement of JSON.parse(res)) {
         allData.push(parseElement);
       }
     }
   }
 
-  const someData: string[] = JSON.parse(
-    await RedisClient.get(`${nodeLibp2p.peerId.toString()}MessageReceived`)
-  );
-  someData.push(newMessage);
+  const someData: string[] = JSON.parse(await redis.get("MessageReceived"));
 
   if (someData.length < allData.length) {
     for (const cid of allData) {
       const find = someData.find((c) => c === cid);
       if (!find) {
-        await RedisClient.add(
-          `${nodeLibp2p.peerId.toString()}MessageReceived`,
-          cid
-        );
+        await redis.add("MessageReceived", cid);
       }
     }
   } else {
