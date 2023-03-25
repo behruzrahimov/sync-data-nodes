@@ -1,16 +1,30 @@
-import { createClient } from "redis";
+import { createClient, RedisClientType } from "redis";
+import { create } from "ipfs-core";
+import { AliceNode } from "../node-libp2p.js";
 
 export class Redis {
-  #url = process.env.REDIS_URL || "redis://localhost:6379";
-  #db = createClient({
-    url: this.#url,
-    password: "1234",
-  });
+  readonly #url: string = "";
+  readonly #name: string = "";
+  #db: RedisClientType;
 
-  init() {
+  constructor(url: string, name: string) {
+    this.#url = url;
+    this.#name = name;
+    this.#db = createClient({
+      url: this.#url,
+      name: this.#name,
+    });
+  }
+
+  async init() {
+    await this.#db.connect();
     this.#db.on("error", (err) => {
       console.log("Redis Client Error", err);
     });
+  }
+
+  async destroy() {
+    await this.#db.disconnect();
   }
 
   async add(key: string, value: string) {
@@ -26,31 +40,16 @@ export class Redis {
       allData.push(value);
     }
 
-    await this.#db.connect();
     await this.#db.set(key, JSON.stringify(allData));
-    await this.#db.disconnect();
   }
 
   async get(key: string): Promise<string> {
-    await this.#db.connect();
     const data = await this.#db.get(key);
-    await this.#db.disconnect();
+    const ci = await this.#db.clientInfo();
+    console.log(`get ${ci.name}`, data);
     if (data === null) {
       return JSON.stringify([]);
     }
     return data;
   }
-}
-
-export async function add(data: string, nodeIPFS: any): Promise<string> {
-  const { cid } = await nodeIPFS.add(data);
-  return cid.toString();
-}
-
-export async function get(cid: string, nodeIPFS: any) {
-  const chunks = [];
-  for await (const chunk of nodeIPFS.cat(cid)) {
-    chunks.push(chunk);
-  }
-  return chunks.toString();
 }
