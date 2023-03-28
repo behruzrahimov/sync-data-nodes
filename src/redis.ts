@@ -50,12 +50,3 @@ export class Redis {
     return data;
   }
 }
-
-const urlAlice = "redis://localhost:6379";
-export const AliceRedis = new Redis(urlAlice, "Alice");
-
-const urlBob = "redis://localhost:6385";
-export const BobRedis = new Redis(urlBob, "Bob");
-
-const urlCharlie = "redis://localhost:6390";
-export const CharlieRedis = new Redis(urlCharlie, "Charlie");

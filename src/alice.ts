@@ -1,5 +1,5 @@
 import { create } from "ipfs-core";
-import { AliceRedis, BobRedis } from "./redis.js";
+import { Redis } from "./redis.js";
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
@@ -10,6 +10,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const urlAlice = "redis://localhost:6379";
+const AliceRedis = new Redis(urlAlice, "Alice");
+
 await AliceRedis.init();
 
 app.get("/did-some", async (req, res) => {

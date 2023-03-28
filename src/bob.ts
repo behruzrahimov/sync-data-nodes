@@ -1,5 +1,5 @@
 import { create } from "ipfs-core";
-import { BobRedis, CharlieRedis } from "./redis.js";
+import { Redis } from "./redis.js";
 import express from "express";
 import cors from "cors";
 const url = " http://localhost:8081";
@@ -11,6 +11,9 @@ import { v4 as uuidv4 } from "uuid";
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const urlBob = "redis://localhost:6385";
+const BobRedis = new Redis(urlBob, "Bob");
 
 await BobRedis.init();
 app.get("/did-some", async (req, res) => {

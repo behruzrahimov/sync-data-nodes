@@ -1,8 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { create } from "ipfs-core";
-import { CharlieRedis } from "./redis.js";
-await CharlieRedis.init();
+import { Redis } from "./redis.js";
 const port = 8082;
 const url = "http://localhost:8082";
 import fetch from "node-fetch";
@@ -13,6 +12,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const urlCharlie = "redis://localhost:6390";
+const CharlieRedis = new Redis(urlCharlie, "Charlie");
+
+await CharlieRedis.init();
 app.get("/did-some", async (req, res) => {
   const result = await CharlieRedis.get("did-some");
   res.json(result);
