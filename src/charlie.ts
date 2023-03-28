@@ -1,25 +1,25 @@
 import express from "express";
 import cors from "cors";
-import { MessageSend } from "./types.js";
 import { create } from "ipfs-core";
 import { CharlieRedis } from "./redis.js";
 await CharlieRedis.init();
 const port = 8082;
 const url = "http://localhost:8082";
 import fetch from "node-fetch";
+import { v4 as uuidv4 } from "uuid";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.get("/get-message-send", async (req, res) => {
-  const result = await CharlieRedis.get("messages-send");
+app.get("/did-some", async (req, res) => {
+  const result = await CharlieRedis.get("did-some");
   res.json(result);
 });
 
-app.get("/get-message-received", async (req, res) => {
-  const result = await CharlieRedis.get("messages-received");
+app.get("/did-another", async (req, res) => {
+  const result = await CharlieRedis.get("did-another");
   res.json(result);
 });
 
@@ -53,61 +53,64 @@ app.get("/start", async (req, res) => {
     return new TextEncoder().encode(str);
   }
   const topic = "ipfs-test-news";
-
   setInterval(async () => {
-    const messageCharlie: MessageSend = {
+    const didDocCharlie = {
       id: Date.now(),
-      from: "Charlie",
-      message: "Hello everyone my name is Charlie!",
+      name: "Charlie",
+      surname: "Jack",
+      age: 20,
     };
-    const res = await CharlieIPFS.add(JSON.stringify(messageCharlie));
-    const cid = res.cid.toString();
+    const data = await CharlieIPFS.add(JSON.stringify(didDocCharlie));
+    const cid = data.cid.toString();
     // console.log(cid);
-    await CharlieRedis.add("messages-send", cid);
+    const keySomeDids = uuidv4();
+    await CharlieRedis.add(keySomeDids, JSON.stringify([cid]));
+    await CharlieRedis.addDID("did-some", keySomeDids);
     await CharlieIPFS.pubsub.publish(
       topic,
-      uint8ArrayFromString(JSON.stringify(messageCharlie))
+      uint8ArrayFromString(JSON.stringify(didDocCharlie))
     );
   }, 3000);
 
-  const resAlice = await fetch(" http://localhost:8080/get-message-send");
-  const sendMessageAlice: any = await resAlice.json();
-  const resBob = await fetch(" http://localhost:8081/get-message-send");
-  const sendMessageBob: any = await resBob.json();
-  const allMessageSend: string[] = [];
-
-  const messages = [JSON.parse(sendMessageBob), JSON.parse(sendMessageAlice)];
-  for (const message of messages) {
+  const allDidSome: string[] = [];
+  const resBob = await fetch(" http://localhost:8081/did-some");
+  const BobDids: any = await resBob.json();
+  const resAlice = await fetch(" http://localhost:8080/did-some");
+  const AliceDids: any = await resAlice.json();
+  const dids = [JSON.parse(BobDids), JSON.parse(AliceDids)];
+  for (const message of dids) {
     for (const cid of message) {
-      allMessageSend.push(cid);
+      allDidSome.push(cid);
+    }
+  }
+  const anotherDids = JSON.parse(await CharlieRedis.get("did-another"));
+  for (const cid of allDidSome) {
+    const find = anotherDids.find((oldCid: string) => cid === oldCid);
+    if (!find) {
+      anotherDids.push(cid);
+      const keyAnotherDid = uuidv4();
+      await CharlieRedis.add(`${keyAnotherDid}`, JSON.stringify([cid]));
+      await CharlieRedis.addDID("did-another", keyAnotherDid);
     }
   }
 
-  const receivedCids = JSON.parse(await CharlieRedis.get("messages-received"));
-  for (const cid of allMessageSend) {
-    const find = receivedCids.find(
-      (receivedCid: string) => cid === receivedCid
-    );
-    if (!find) {
-      receivedCids.push(cid);
-      await CharlieRedis.add("messages-received", cid);
-    }
-  }
-  let latestMessage = "";
+  let lastDid = "";
 
   await CharlieIPFS.pubsub.subscribe(topic, async (msg: any) => {
     if (msg.from === ipfsId.id) return;
-    const receivedMessage = uint8ArrayToString(msg.data);
-    const res = await CharlieIPFS.add(receivedMessage);
+    const receivedDid = uint8ArrayToString(msg.data);
+    const res = await CharlieIPFS.add(receivedDid);
     const cid = res.cid.toString();
-    if (latestMessage === "") {
-      for (let i = 0; i < receivedCids.length; i++) {
-        console.log(">>", receivedCids[i]);
+    if (lastDid === "") {
+      for (let i = 0; i < anotherDids.length; i++) {
+        console.log(">>", await CharlieRedis.get(anotherDids[i]));
       }
-      latestMessage = receivedCids[receivedCids.length];
+      lastDid = anotherDids[anotherDids.length];
     }
-    console.log(">>", cid);
-    await CharlieRedis.add("messages-received", cid);
+    const key = uuidv4();
+    await CharlieRedis.add(key, JSON.stringify([cid]));
+    await CharlieRedis.addDID("did-another", key);
+    console.log(">>", await CharlieRedis.get(key));
   });
 
   res.json({

@@ -22,12 +22,24 @@ export class Redis {
     await this.#db.disconnect();
   }
 
-  async add(key: string, value: string) {
+  async addDID(key: string, value: string) {
     const data = await this.get(key);
     const allData: string[] = JSON.parse(data);
     allData.push(value);
     const uniqData = [...new Set(allData)];
     await this.#db.set(key, JSON.stringify(uniqData));
+  }
+
+  async addCID(key: string, value: string) {
+    const data = await this.get(key);
+    const allData: string[] = JSON.parse(data);
+    allData.push(value);
+    const uniqData = [...new Set(allData)];
+    await this.#db.set(key, JSON.stringify(uniqData));
+  }
+
+  async add(key: string, value: string) {
+    await this.#db.set(key, value);
   }
 
   async get(key: string): Promise<string> {
