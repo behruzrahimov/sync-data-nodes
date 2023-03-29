@@ -1,4 +1,4 @@
-import { create } from "ipfs-core";
+import { create, IPFS } from "ipfs-core";
 import { Redis } from "./redis.js";
 import express from "express";
 import cors from "cors";
@@ -26,27 +26,43 @@ app.get("/did-another", async (req, res) => {
   res.json(result);
 });
 
+let AliceIPFS: any;
+app.get("/did/:did", async (req, res) => {
+  const someData = await AliceRedis.get("did-some");
+  const anotherData = await AliceRedis.get("did-another");
+  const keys = [];
+  for (const data of JSON.parse(someData)) {
+    const parseData = JSON.parse(data);
+    keys.push(parseData.key);
+  }
+  for (const data of JSON.parse(anotherData)) {
+    keys.push(data);
+  }
+  const find = keys.find((key) => key === req.params.did);
+  let cid = "";
+  if (find) {
+    const getDid = await AliceRedis.get(find);
+    cid = JSON.parse(getDid)[0];
+  }
+  async function get(cid: string) {
+    const chunks = [];
+    for await (const chunk of AliceIPFS.cat(cid)) {
+      chunks.push(chunk);
+    }
+    return chunks.toString();
+  }
+  let didDoc: string = "";
+  if (find) {
+    didDoc = await get(cid);
+    console.log("DidDoc find", didDoc);
+  } else {
+    console.log("DidDoc not find");
+  }
+  res.json(didDoc);
+});
+
 app.get("/start", async (req, res) => {
   console.log("start");
-  const AliceIPFS = await create({
-    repo: "ipfs/ipfs1",
-    EXPERIMENTAL: {
-      pubsub: true,
-    },
-    config: {
-      Bootstrap: [
-        "/dns4/p2p-relay-ws.itn.mobi/tcp/443/wss/p2p/12D3KooWPHEjnx8HQKL3F9gvXy6ZJ9Pt19rJihv8EGdBVW48suqY",
-      ],
-      Addresses: {
-        Swarm: ["/ip4/0.0.0.0/tcp/4004", "/ip4/0.0.0.0/tcp/4005/ws"],
-      },
-    },
-    Discovery: {
-      MDNS: {
-        Enabled: true,
-      },
-    },
-  });
 
   const ipfsId = await AliceIPFS.id();
 
@@ -70,10 +86,13 @@ app.get("/start", async (req, res) => {
     // console.log(cid);
     const keySomeDids = uuidv4();
     await AliceRedis.add(keySomeDids, JSON.stringify([cid]));
-    await AliceRedis.addDID("did-some", keySomeDids);
+    await AliceRedis.addDID(
+      "did-some",
+      JSON.stringify({ key: keySomeDids, value: [cid] })
+    );
     await AliceIPFS.pubsub.publish(
       topic,
-      uint8ArrayFromString(JSON.stringify(didAlice))
+      uint8ArrayFromString(JSON.stringify({ key: keySomeDids, did: didAlice }))
     );
   }, 3000);
 
@@ -82,39 +101,48 @@ app.get("/start", async (req, res) => {
   const BobDids: any = await resBob.json();
   const resCharlie = await fetch(" http://localhost:8082/did-some");
   const CharlieDids: any = await resCharlie.json();
-  const dids = [JSON.parse(BobDids), JSON.parse(CharlieDids)];
-  for (const message of dids) {
-    for (const cid of message) {
-      allDidSome.push(cid);
-    }
+
+  const dids = [...JSON.parse(BobDids), ...JSON.parse(CharlieDids)];
+  for (const did of dids) {
+    allDidSome.push(did);
   }
+
   const anotherDids = JSON.parse(await AliceRedis.get("did-another"));
-  for (const cid of allDidSome) {
-    const find = anotherDids.find((oldCid: string) => cid === oldCid);
+  for (const did of allDidSome) {
+    const find = anotherDids.find(
+      (oldDId: string) => JSON.parse(did).key === oldDId
+    );
     if (!find) {
-      anotherDids.push(cid);
-      const keyAnotherDid = uuidv4();
-      await AliceRedis.add(`${keyAnotherDid}`, JSON.stringify([cid]));
-      await AliceRedis.addDID("did-another", keyAnotherDid);
+      anotherDids.push(JSON.parse(did).key);
+      await AliceRedis.add(
+        JSON.parse(did).key,
+        JSON.stringify(JSON.parse(did).value)
+      );
+      await AliceRedis.addDID("did-another", JSON.parse(did).key);
     }
   }
 
   let lastDid = "";
+
   await AliceIPFS.pubsub.subscribe(topic, async (msg: any) => {
     if (msg.from === ipfsId.id) return;
     const receivedDid = uint8ArrayToString(msg.data);
-    const res = await AliceIPFS.add(receivedDid);
-    const cid = res.cid.toString();
+    const { key, did } = JSON.parse(receivedDid);
+    const data = await AliceIPFS.add(JSON.stringify(did));
+    const cid = data.cid.toString();
+
     if (lastDid === "") {
       for (let i = 0; i < anotherDids.length; i++) {
-        console.log(">>", await AliceRedis.get(anotherDids[i]));
+        const getCid = JSON.parse(await AliceRedis.get(anotherDids[i]));
+        console.log(">>", getCid);
       }
       lastDid = anotherDids[anotherDids.length];
     }
-    const key = uuidv4();
-    await AliceRedis.add(`${key}`, JSON.stringify([cid]));
+    lastDid = key;
+    await AliceRedis.add(key, JSON.stringify([cid]));
     await AliceRedis.addDID("did-another", key);
-    console.log(">>", await AliceRedis.get(key));
+    const getCid = JSON.parse(await AliceRedis.get(key));
+    console.log(">>", getCid);
   });
 
   res.json({
@@ -122,6 +150,25 @@ app.get("/start", async (req, res) => {
   });
 });
 
-app.listen(port, () => {
+app.listen(port, async () => {
+  AliceIPFS = await create({
+    repo: "ipfs/ipfs1",
+    EXPERIMENTAL: {
+      pubsub: true,
+    },
+    config: {
+      Bootstrap: [
+        "/dns4/p2p-relay-ws.itn.mobi/tcp/443/wss/p2p/12D3KooWPHEjnx8HQKL3F9gvXy6ZJ9Pt19rJihv8EGdBVW48suqY",
+      ],
+      Addresses: {
+        Swarm: ["/ip4/0.0.0.0/tcp/4004", "/ip4/0.0.0.0/tcp/4005/ws"],
+      },
+    },
+    Discovery: {
+      MDNS: {
+        Enabled: true,
+      },
+    },
+  });
   console.log(`Alice started on ${url}`);
 });

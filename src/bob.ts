@@ -17,36 +17,52 @@ const BobRedis = new Redis(urlBob, "Bob");
 
 await BobRedis.init();
 app.get("/did-some", async (req, res) => {
-  const result = await BobRedis.get("messages-send");
+  const result = await BobRedis.get("did-some");
   res.json(result);
 });
 
 app.get("/did-another", async (req, res) => {
-  const result = await BobRedis.get("messages-received");
+  const result = await BobRedis.get("did-another");
   res.json(result);
+});
+let BobIPFS: any;
+app.get("/did/:did", async (req, res) => {
+  const someData = await BobRedis.get("did-some");
+  const anotherData = await BobRedis.get("did-another");
+  const keys = [];
+  for (const data of JSON.parse(someData)) {
+    const parseData = JSON.parse(data);
+    keys.push(parseData.key);
+  }
+  for (const data of JSON.parse(anotherData)) {
+    keys.push(data);
+  }
+  const find = keys.find((key) => key === req.params.did);
+  let cid = "";
+  if (find) {
+    const getDid = await BobRedis.get(find);
+    cid = JSON.parse(getDid)[0];
+  }
+  async function get(cid: string) {
+    const chunks = [];
+    for await (const chunk of BobIPFS.cat(cid)) {
+      chunks.push(chunk);
+    }
+    return chunks.toString();
+  }
+
+  let didDoc: string = "";
+  if (find) {
+    didDoc = await get(cid);
+    console.log("DidDoc find", didDoc);
+  } else {
+    console.log("DidDoc not find");
+  }
+  res.json(didDoc);
 });
 
 app.get("/start", async (req, res) => {
   console.log("start");
-  const BobIPFS = await create({
-    repo: "ipfs/ipfs2",
-    EXPERIMENTAL: {
-      pubsub: true,
-    },
-    config: {
-      Bootstrap: [
-        "/dns4/p2p-relay-ws.itn.mobi/tcp/443/wss/p2p/12D3KooWPHEjnx8HQKL3F9gvXy6ZJ9Pt19rJihv8EGdBVW48suqY",
-      ],
-      Addresses: {
-        Swarm: ["/ip4/0.0.0.0/tcp/4002", "/ip4/0.0.0.0/tcp/4003/ws"],
-      },
-      Discovery: {
-        MDNS: {
-          Enabled: true,
-        },
-      },
-    },
-  });
 
   const ipfsId = await BobIPFS.id();
   function uint8ArrayToString(buf: Uint8Array) {
@@ -69,10 +85,13 @@ app.get("/start", async (req, res) => {
     // console.log(cid);
     const keySomeDids = uuidv4();
     await BobRedis.add(keySomeDids, JSON.stringify([cid]));
-    await BobRedis.addDID("did-some", keySomeDids);
+    await BobRedis.addDID(
+      "did-some",
+      JSON.stringify({ key: keySomeDids, value: [cid] })
+    );
     await BobIPFS.pubsub.publish(
       topic,
-      uint8ArrayFromString(JSON.stringify(didBob))
+      uint8ArrayFromString(JSON.stringify({ key: keySomeDids, did: didBob }))
     );
   }, 3000);
 
@@ -83,21 +102,23 @@ app.get("/start", async (req, res) => {
   const resCharlie = await fetch(" http://localhost:8082/did-some");
   const CharlieDids: any = await resCharlie.json();
 
-  const dids = [JSON.parse(AliceDids), JSON.parse(CharlieDids)];
-  for (const message of dids) {
-    for (const cid of message) {
-      allDidSome.push(cid);
-    }
+  const dids = [...JSON.parse(AliceDids), ...JSON.parse(CharlieDids)];
+  for (const did of dids) {
+    allDidSome.push(did);
   }
 
   const anotherDids = JSON.parse(await BobRedis.get("did-another"));
-  for (const cid of allDidSome) {
-    const find = anotherDids.find((oldCid: string) => cid === oldCid);
+  for (const did of allDidSome) {
+    const find = anotherDids.find(
+      (oldDId: string) => JSON.parse(did).key === oldDId
+    );
     if (!find) {
-      anotherDids.push(cid);
-      const keyAnotherDid = uuidv4();
-      await BobRedis.add(`${keyAnotherDid}`, JSON.stringify([cid]));
-      await BobRedis.addDID("did-another", keyAnotherDid);
+      anotherDids.push(JSON.parse(did).key);
+      await BobRedis.add(
+        JSON.parse(did).key,
+        JSON.stringify(JSON.parse(did).value)
+      );
+      await BobRedis.addDID("did-another", JSON.parse(did).key);
     }
   }
 
@@ -106,24 +127,46 @@ app.get("/start", async (req, res) => {
   await BobIPFS.pubsub.subscribe(topic, async (msg: any) => {
     if (msg.from === ipfsId.id) return;
     const receivedDid = uint8ArrayToString(msg.data);
-    const res = await BobIPFS.add(receivedDid);
-    const cid = res.cid.toString();
+    const { key, did } = JSON.parse(receivedDid);
+    const data = await BobIPFS.add(JSON.stringify(did));
+    const cid = data.cid.toString();
     if (lastDid === "") {
       for (let i = 0; i < anotherDids.length; i++) {
-        console.log(">>", await BobRedis.get(anotherDids[i]));
+        const getCid = JSON.parse(await BobRedis.get(anotherDids[i]));
+        console.log(">>", getCid);
       }
       lastDid = anotherDids[anotherDids.length];
     }
-    const key = uuidv4();
-    await BobRedis.add(`${key}`, JSON.stringify([cid]));
+    lastDid = key;
+    await BobRedis.add(key, JSON.stringify([cid]));
     await BobRedis.addDID("did-another", key);
-    console.log(">>", await BobRedis.get(key));
+    const getCid = JSON.parse(await BobRedis.get(key));
+    console.log(">>", getCid);
   });
   res.json({
     success: true,
   });
 });
 
-app.listen(port, () => {
+app.listen(port, async () => {
+  BobIPFS = await create({
+    repo: "ipfs/ipfs2",
+    EXPERIMENTAL: {
+      pubsub: true,
+    },
+    config: {
+      Bootstrap: [
+        "/dns4/p2p-relay-ws.itn.mobi/tcp/443/wss/p2p/12D3KooWPHEjnx8HQKL3F9gvXy6ZJ9Pt19rJihv8EGdBVW48suqY",
+      ],
+      Addresses: {
+        Swarm: ["/ip4/0.0.0.0/tcp/4002", "/ip4/0.0.0.0/tcp/4003/ws"],
+      },
+      Discovery: {
+        MDNS: {
+          Enabled: true,
+        },
+      },
+    },
+  });
   console.log(`Bob started on ${url}`);
 });
