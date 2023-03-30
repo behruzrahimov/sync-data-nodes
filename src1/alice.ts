@@ -17,30 +17,17 @@ const AliceRedis = new Redis(urlAlice, "Alice");
 
 await AliceRedis.init();
 
-app.get("/did-some", async (req, res) => {
-  const result = await AliceRedis.get("did-some");
-  res.json(result);
-});
-
-app.get("/did-another", async (req, res) => {
-  const result = await AliceRedis.get("did-another");
-  res.json(result);
-});
-
-app.get("/comm-some", async (req, res) => {
-  const result = await AliceRedis.get("comm-some");
-  res.json(result);
-});
-
-app.get("/comm-another", async (req, res) => {
-  const result = await AliceRedis.get("comm-another");
+app.get("/get/:type/:typeData", async (req, res) => {
+  const result = await AliceRedis.get(
+    `${req.params.type}-${req.params.typeData}`
+  );
   res.json(result);
 });
 
 let AliceIPFS: any;
-app.get("/did/:did", async (req, res) => {
-  const someData = await AliceRedis.get("did-some");
-  const anotherData = await AliceRedis.get("did-another");
+app.get("/find/:type/:id", async (req, res) => {
+  const someData = await AliceRedis.get(`${req.params.type}-some`);
+  const anotherData = await AliceRedis.get(`${req.params.type}-another`);
   const keys = [];
   for (const data of JSON.parse(someData)) {
     const parseData = JSON.parse(data);
@@ -49,7 +36,7 @@ app.get("/did/:did", async (req, res) => {
   for (const data of JSON.parse(anotherData)) {
     keys.push(data);
   }
-  const find = keys.find((key) => key === req.params.did);
+  const find = keys.find((key) => key === req.params.id);
   let cid = "";
   if (find) {
     const getDid = await AliceRedis.get(find);
@@ -65,41 +52,17 @@ app.get("/did/:did", async (req, res) => {
   let didDoc: string = "";
   if (find) {
     didDoc = await get(cid);
-    console.log("DidDoc find", JSON.parse(didDoc));
-  }
-  res.json(find ? didDoc : "didDoc not find");
-});
-
-app.get("/comm/:comm", async (req, res) => {
-  const someData = await AliceRedis.get("comm-some");
-  const anotherData = await AliceRedis.get("comm-another");
-  const keys = [];
-  for (const data of JSON.parse(someData)) {
-    const parseData = JSON.parse(data);
-    keys.push(parseData.key);
-  }
-  for (const data of JSON.parse(anotherData)) {
-    keys.push(data);
-  }
-  const find = keys.find((key) => key === req.params.comm);
-  let cid = "";
-  if (find) {
-    const getDid = await AliceRedis.get(find);
-    cid = JSON.parse(getDid)[0];
-  }
-  async function get(cid: string) {
-    const chunks = [];
-    for await (const chunk of AliceIPFS.cat(cid)) {
-      chunks.push(chunk);
+    if (req.params.type === "did") {
+      console.log("DidDoc find", JSON.parse(didDoc));
+    } else {
+      console.log("Community find", JSON.parse(didDoc));
     }
-    return chunks.toString();
   }
-  let community: string = "";
-  if (find) {
-    community = await get(cid);
-    console.log("community find", JSON.parse(community));
+  if (req.params.type === "did") {
+    res.json(find ? didDoc : "DidDoc not find");
+  } else {
+    res.json(find ? didDoc : "Community not find");
   }
-  res.json(find ? community : "community not find");
 });
 
 app.get("/start", async (req, res) => {
@@ -129,6 +92,7 @@ app.get("/start", async (req, res) => {
     const dataDidDoc = await AliceIPFS.add(JSON.stringify(didDocAlice));
     const cidDidDoc = dataDidDoc.cid.toString();
     const keyDidDoc = `did:${uuidv4()}`;
+    console.log(keyDidDoc);
     await AliceRedis.add(keyDidDoc, JSON.stringify([cidDidDoc]));
     await AliceRedis.addDID(
       "did-some",
@@ -151,6 +115,7 @@ app.get("/start", async (req, res) => {
     const dataComm = await AliceIPFS.add(JSON.stringify(communityAlice));
     const cidComm = dataComm.cid.toString();
     const keyComm = `comm:${uuidv4()}`;
+    console.log(keyComm);
     await AliceRedis.add(keyComm, JSON.stringify([cidComm]));
     await AliceRedis.addDID(
       "comm-some",
@@ -165,9 +130,9 @@ app.get("/start", async (req, res) => {
   }, 3000);
 
   let allDidSome: string[] = [];
-  const resBobDid = await fetch(" http://localhost:8081/did-some");
+  const resBobDid = await fetch(" http://localhost:8081/get/did/some");
   const BobDids: any = await resBobDid.json();
-  const resCharlieDid = await fetch(" http://localhost:8082/did-some");
+  const resCharlieDid = await fetch(" http://localhost:8082/get/did/some");
   const CharlieDids: any = await resCharlieDid.json();
 
   const dids = [...JSON.parse(BobDids), ...JSON.parse(CharlieDids)];
@@ -192,9 +157,9 @@ app.get("/start", async (req, res) => {
   }
 
   let allCommSome: string[] = [];
-  const resBobComm = await fetch(" http://localhost:8081/comm-some");
+  const resBobComm = await fetch(" http://localhost:8081/get/comm/some");
   const BobComm: any = await resBobComm.json();
-  const resCharlieComm = await fetch(" http://localhost:8082/comm-some");
+  const resCharlieComm = await fetch(" http://localhost:8082/get/comm/some");
   const CharlieComm: any = await resCharlieComm.json();
   const comm = [...JSON.parse(BobComm), ...JSON.parse(CharlieComm)];
   for (const com of comm) {
@@ -261,7 +226,7 @@ app.get("/start", async (req, res) => {
 
 app.listen(port, async () => {
   AliceIPFS = await create({
-    repo: "ipfs/ipfs1",
+    repo: `ipfs/ipfs1`,
     EXPERIMENTAL: {
       pubsub: true,
     },

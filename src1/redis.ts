@@ -22,7 +22,7 @@ export class Redis {
     await this.#db.disconnect();
   }
 
-  async addAll(key: string, value: string) {
+  async addDID(key: string, value: string) {
     const data = await this.get(key);
     const allData: string[] = JSON.parse(data);
     allData.push(value);
@@ -30,7 +30,7 @@ export class Redis {
     await this.#db.set(key, JSON.stringify(uniqData));
   }
 
-  async updateCID(key: string, value: string) {
+  async addCID(key: string, value: string) {
     const data = await this.get(key);
     const allData: string[] = JSON.parse(data);
     allData.push(value);

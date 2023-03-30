@@ -16,30 +16,35 @@ const urlCharlie = "redis://localhost:6390";
 const CharlieRedis = new Redis(urlCharlie, "Charlie");
 
 await CharlieRedis.init();
-app.get("/did-some", async (req, res) => {
-  const result = await CharlieRedis.get("did-some");
-  res.json(result);
-});
-
-app.get("/did-another", async (req, res) => {
-  const result = await CharlieRedis.get("did-another");
-  res.json(result);
-});
-
-app.get("/comm-some", async (req, res) => {
-  const result = await CharlieRedis.get("comm-some");
-  res.json(result);
-});
-
-app.get("/comm-another", async (req, res) => {
-  const result = await CharlieRedis.get("comm-another");
+app.get("/get/:type/:typeData", async (req, res) => {
+  let result: string = "";
+  if (req.params.type === "did") {
+    if (req.params.typeData === "some") {
+      result = await CharlieRedis.get("did-some");
+    } else if (req.params.typeData === "another") {
+      result = await CharlieRedis.get("did-another");
+    }
+  } else if (req.params.type === "comm") {
+    if (req.params.typeData === "some") {
+      result = await CharlieRedis.get("comm-some");
+    } else if (req.params.typeData === "another") {
+      result = await CharlieRedis.get("comm-another");
+    }
+  }
   res.json(result);
 });
 
 let CharlieIPFS: any;
-app.get("/did/:did", async (req, res) => {
-  const someData = await CharlieRedis.get("did-some");
-  const anotherData = await CharlieRedis.get("did-another");
+app.get("/find/:type/:id", async (req, res) => {
+  let someData: string;
+  let anotherData: string;
+  if (req.params.type === "did") {
+    someData = await CharlieRedis.get("did-some");
+    anotherData = await CharlieRedis.get("did-another");
+  } else {
+    someData = await CharlieRedis.get("comm-some");
+    anotherData = await CharlieRedis.get("comm-another");
+  }
   const keys = [];
   for (const data of JSON.parse(someData)) {
     const parseData = JSON.parse(data);
@@ -48,7 +53,7 @@ app.get("/did/:did", async (req, res) => {
   for (const data of JSON.parse(anotherData)) {
     keys.push(data);
   }
-  const find = keys.find((key) => key === req.params.did);
+  const find = keys.find((key) => key === req.params.id);
   let cid = "";
   if (find) {
     const getDid = await CharlieRedis.get(find);
@@ -64,43 +69,17 @@ app.get("/did/:did", async (req, res) => {
   let didDoc: string = "";
   if (find) {
     didDoc = await get(cid);
-    console.log("DidDoc find", JSON.parse(didDoc));
-  } else {
-    console.log("DidDoc not find");
-  }
-  res.json(find ? didDoc : "didDoc not find");
-});
-
-app.get("/comm/:comm", async (req, res) => {
-  const someData = await CharlieRedis.get("comm-some");
-  const anotherData = await CharlieRedis.get("comm-another");
-  const keys = [];
-  for (const data of JSON.parse(someData)) {
-    const parseData = JSON.parse(data);
-    keys.push(parseData.key);
-  }
-  for (const data of JSON.parse(anotherData)) {
-    keys.push(data);
-  }
-  const find = keys.find((key) => key === req.params.comm);
-  let cid = "";
-  if (find) {
-    const getDid = await CharlieRedis.get(find);
-    cid = JSON.parse(getDid)[0];
-  }
-  async function get(cid: string) {
-    const chunks = [];
-    for await (const chunk of CharlieIPFS.cat(cid)) {
-      chunks.push(chunk);
+    if (req.params.type === "did") {
+      console.log("DidDoc find", JSON.parse(didDoc));
+    } else {
+      console.log("Community find", JSON.parse(didDoc));
     }
-    return chunks.toString();
   }
-  let community: string = "";
-  if (find) {
-    community = await get(cid);
-    console.log("community find", JSON.parse(community));
+  if (req.params.type === "did") {
+    res.json(find ? didDoc : "DidDoc not find");
+  } else {
+    res.json(find ? didDoc : "Community not find");
   }
-  res.json(find ? community : "community not find");
 });
 
 app.get("/start", async (req, res) => {
@@ -167,9 +146,9 @@ app.get("/start", async (req, res) => {
   }, 3000);
 
   let allDidSome: string[] = [];
-  const resAliceDid = await fetch(" http://localhost:8080/did-some");
+  const resAliceDid = await fetch(" http://localhost:8080/get/did/some");
   const AliceDid: any = await resAliceDid.json();
-  const resBobDid = await fetch(" http://localhost:8081/did-some");
+  const resBobDid = await fetch(" http://localhost:8081/get/did/some");
   const BobDids: any = await resBobDid.json();
   const dids = [...JSON.parse(BobDids), ...JSON.parse(AliceDid)];
   for (const did of dids) {
@@ -193,9 +172,9 @@ app.get("/start", async (req, res) => {
   }
 
   let allCommSome: string[] = [];
-  const resAliceComm = await fetch(" http://localhost:8080/comm-some");
+  const resAliceComm = await fetch(" http://localhost:8080/get/comm/some");
   const AliceComm: any = await resAliceComm.json();
-  const resBobComm = await fetch(" http://localhost:8081/comm-some");
+  const resBobComm = await fetch(" http://localhost:8081/get/comm/some");
   const BobComm: any = await resBobComm.json();
   const comm = [...JSON.parse(BobComm), ...JSON.parse(AliceComm)];
   for (const com of comm) {
