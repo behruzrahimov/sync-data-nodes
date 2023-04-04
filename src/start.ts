@@ -75,46 +75,36 @@ export async function start(name: string, urlRedis: string) {
 
   //========================================================//
   //received messages
-  let latestReceivedMessage = "";
-  const cidExist: string[] = [];
   await ipfs.pubsub.subscribe(topic, async (msg: any) => {
     const ipfsId = await ipfs.id();
     if (msg.from === ipfsId.id) return;
-    const receivedDid = uint8ArrayToString(msg.data);
-    const { key, data } = JSON.parse(receivedDid);
+    const receivedMessage = uint8ArrayToString(msg.data);
+    const { key, data } = JSON.parse(receivedMessage);
     const resIpfs = await ipfs.add(JSON.stringify(data));
     const cid = resIpfs.cid.toString();
-    cidExist.push(JSON.stringify([cid]));
-    console.log("on>>", [cid]);
     if (data.type === "comm") {
-      await redis.addAll("comm-another-on", key);
+      await redis.addAll("comm-another", key);
     } else {
-      await redis.addAll("did-another-on", key);
+      await redis.addAll("dids-another", key);
     }
-    if (latestReceivedMessage === "") {
-      const commData = await redis.get("comm-another-on");
-      const didData = await redis.get("did-anther-on");
-      const keys = [];
-      for (const key of JSON.parse(commData)) {
-        keys.push(key);
-      }
-      for (const key of JSON.parse(didData)) {
-        keys.push(key);
-      }
-      for (const key of keys) {
-        const cid = await redis.get(key);
-        const find = cidExist.find((c) => c === cid);
-        if (!find) {
-          cidExist.push(cid);
-        }
-        if (!find) {
-          console.log("off>>", cid);
-        }
-      }
-    }
-    latestReceivedMessage = cid;
+    console.log("received message", JSON.parse(receivedMessage));
     await redis.add(key, JSON.stringify([cid]));
   });
+
+  //=============================================================//
+  //send request
+
+  (ipfs as any).libp2p.connectionManager.addEventListener("peer:connect");
+  await (ipfs as any).libp2p.handle(
+    "/echo/1.0.0",
+    async ({ stream }: any) => await streamToRead(stream, ipfs, redis)
+  );
+
+  const peers = await ipfs.pubsub.peers(topic);
+  console.log("find subscribed peers", peers);
+  for (let peerId of peers) {
+    await sendRequest(ipfs, redis, peerId, "get-dids");
+  }
 
   //==============================================================//
   //send messages
@@ -160,54 +150,24 @@ export async function start(name: string, urlRedis: string) {
     topic,
     uint8ArrayFromString(JSON.stringify({ key: keyComm, data: community }))
   );
-
-  //=============================================================//
-  //send request
-  (ipfs as any).libp2p.connectionManager.addEventListener(
-    "peer:connect",
-    (peer: any) => {
-      console.log(`Peer connected: ${peer.detail.remotePeer.toString()}`);
-    }
-  );
-
-  await (ipfs as any).libp2p.handle("/echo/1.0.0", ({ stream }: any) =>
-    pipe(stream, (source) =>
-      (async function () {
-        for await (const msg of source) {
-          const message = JSON.parse(
-            uint8ArrayToString((msg as any).subarray())
-          );
-          console.log("message=========>>>>>>>", message);
-
-          if (message.type === "get-dids" || message.type === "get-comm") {
-            await sendData(stream, ipfs, message.from, redis, message.type);
-          }
-        }
-      })()
-    )
-  );
-
-  const peers = await ipfs.pubsub.peers(topic);
-  for (let peerId of peers) {
-    await sendRequest(ipfs, peerId, "get-dids");
-  }
 }
 
-async function sendRequest(ipfs: IPFS, peerId: PeerId, type: string) {
+async function sendRequest(
+  ipfs: IPFS,
+  redis: Redis,
+  peerId: PeerId,
+  type: string
+) {
   console.log("sending stream message to", peerId.toString());
   const stream = await (ipfs as any).libp2p.dialProtocol(peerId, "/echo/1.0.0");
-  await pipe(
-    // Source data
-    [
-      uint8ArrayFromString(
-        JSON.stringify({
-          type: type,
-          from: (ipfs as any).libp2p.peerId as PeerId,
-        })
-      ),
-    ],
-    stream
+  await sendToStream(
+    stream,
+    JSON.stringify({
+      type: type,
+      from: (ipfs as any).libp2p.peerId as PeerId,
+    })
   );
+  await streamToRead(stream, ipfs, redis);
 }
 
 async function sendData(
@@ -220,41 +180,122 @@ async function sendData(
   console.log("sending stream message to", peerId);
   if (type === "get-dids") {
     const dids = JSON.parse(await redis.get("did-some"));
-    await pipe(
-      [
-        uint8ArrayFromString(
-          JSON.stringify({
-            type: "dids",
-            from: (ipfs as any).libp2p.peerId as PeerId,
-            data: dids,
-          })
-        ),
-      ],
+    await sendToStream(
       stream,
-      // Sink function
-      async function (source: any) {
-        // For each chunk of data
-        for await (const data of source) {
-          // Output the data
-          console.log("received echo:", uint8ArrayToString(data.subarray()));
-        }
-      }
+      JSON.stringify({
+        type: "dids",
+        from: (ipfs as any).libp2p.peerId as PeerId,
+        data: dids,
+      })
     );
   } else if (type === "get-comm") {
     const comm = JSON.parse(await redis.get("comm-some"));
-    await pipe(
-      // Source data
-      [
-        uint8ArrayFromString(
-          JSON.stringify({
-            type: "comm",
-            from: (ipfs as any).libp2p.peerId as PeerId,
-            data: comm,
-          })
-        ),
-      ],
+    await sendToStream(
       stream,
-      async function (source) {}
+      JSON.stringify({
+        type: "comm",
+        from: (ipfs as any).libp2p.peerId as PeerId,
+        data: comm,
+      })
     );
+  }
+}
+
+async function sendToStream(stream: any, message: string) {
+  await pipe(
+    [message],
+    (source) => map(source, (string) => uint8ArrayFromString(string)),
+    lp.encode(),
+    stream.sink
+  );
+}
+
+async function streamToRead(stream: any, ipfs: IPFS, redis: Redis) {
+  await pipe(
+    stream.source,
+    lp.decode(),
+    (source) => map(source, (buf) => uint8ArrayToString(buf.subarray())),
+    async function (source) {
+      for await (const msg of source) {
+        // console.log("> " + msg.toString().replace("\n", ""));
+        const messages = JSON.parse(msg);
+        if (messages.type === "get-dids" || messages.type === "get-comm") {
+          console.log(messages);
+          await sendData(stream, ipfs, messages.from, redis, messages.type);
+        }
+        if (messages.type === "dids" || messages.type === "comm") {
+          const res = await redis.get(`${messages.type}-another`);
+          const someData = JSON.parse(res);
+          if (someData.length === 0) {
+            for (const message of messages.data) {
+              await redis.add(
+                JSON.parse(message).key,
+                JSON.stringify(JSON.parse(message).value)
+              );
+              await redis.addAll(
+                `${messages.type}-another`,
+                JSON.parse(message).key
+              );
+            }
+          } else {
+            for (const data of messages.data) {
+              const find = someData.find(
+                (key: string) => JSON.parse(data).key === key
+              );
+              if (!find) {
+                await redis.add(
+                  JSON.parse(data).key,
+                  JSON.stringify(JSON.parse(data).value)
+                );
+                await redis.addAll(
+                  `${messages.type}-another`,
+                  JSON.parse(data).key
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  );
+}
+
+async function find(ipfs: IPFS, redis: Redis, key: string, type: string) {
+  const someData = await redis.get(`${type}-some`);
+  const anotherData = await redis.get(`${type}-another`);
+  const keys = [];
+  for (const data of JSON.parse(someData)) {
+    const parseData = JSON.parse(data);
+    keys.push(parseData.key);
+  }
+  for (const data of JSON.parse(anotherData)) {
+    keys.push(data);
+  }
+  const find = keys.find((key) => key === key);
+  let cid = "";
+  if (find) {
+    const getDid = await redis.get(find);
+    cid = JSON.parse(getDid)[0];
+  }
+  async function get(cid: string) {
+    const chunks = [];
+    for await (const chunk of (ipfs as any).cat(cid)) {
+      chunks.push(chunk);
+    }
+    return chunks.toString();
+  }
+  let didDoc: string = "";
+  if (find) {
+    didDoc = await get(cid);
+    if (type === "did") {
+      console.log("DidDoc find", JSON.parse(didDoc));
+    } else {
+      console.log("Community find", JSON.parse(didDoc));
+    }
+  }
+  if (type === "did") {
+    console.log(find ? didDoc : "DidDoc not find");
+  } else {
+    console.log(find ? didDoc : "Community not find");
   }
 }
