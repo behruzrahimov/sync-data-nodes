@@ -1,0 +1,83 @@
+
+    const peersOnline: any = await new Promise((resolve) =>
+      setTimeout(async () => resolve(await ipfs.pubsub.peers(topic)), 2000)
+    );
+
+    ipfs.libp2p.connectionManager.addEventListener("peer:connect", (evt: any) => {
+      const connection = evt.detail;
+      // console.log("received dial to me from:", connection.remotePeer.toString());
+    });
+  await ipfs.libp2p.handle("/echo/1.0.0", ({ stream }: any) =>
+    pipe(stream.source, stream.sink)
+  );
+
+  console.log("Listener ready, listening on:");
+  ipfs.libp2p.getMultiaddrs().forEach((ma: any) => {
+    console.log(ma.toString());
+  });
+
+if (portIpfs === 4007) {
+    setTimeout(async () => {
+      const listenerMultiaddr = multiaddr(
+        "/ip4/127.0.0.1/tcp/4004/p2p/" + peersOnline[0].toString()
+      );
+      console.log("Dialer ready, listening on:");
+      ipfs.libp2p
+        .getMultiaddrs()
+        .forEach((ma: any) => console.log(ma.toString()));
+
+      const stream = await ipfs.libp2p.dialProtocol(
+        listenerMultiaddr,
+        "/echo/1.0.0"
+      );
+
+      await pipe(
+        // Source data
+        [uint8ArrayFromString(">>hello my name is Bob")],
+        // Write to the stream, and pass its output to the next function
+        stream,
+        // Sink function
+        async function (source) {
+          // For each chunk of data
+          for await (const data of source) {
+            // Output the data
+            // @ts-ignore
+            console.log("received echo:", uint8ArrayToString(data.subarray()));
+          }
+        }
+      );
+    }, 3000);
+  }
+
+  if (portIpfs === 4004) {
+    setTimeout(async () => {
+      const listenerMultiaddr = multiaddr(
+        "/ip4/127.0.0.1/tcp/4007/p2p/12D3KooWNyHpbYWcv9DyvbLUMmzuqAvysd9gfa1XdsAZsGgurjF2"
+      );
+      console.log("Dialer ready, listening on:");
+      ipfs.libp2p
+        .getMultiaddrs()
+        .forEach((ma: any) => console.log(ma.toString()));
+
+      const stream = await ipfs.libp2p.dialProtocol(
+        listenerMultiaddr,
+        "/echo/1.0.0"
+      );
+
+      await pipe(
+        // Source data
+        [uint8ArrayFromString(">>hello my name is Alice")],
+        // Write to the stream, and pass its output to the next function
+        stream,
+        // Sink function
+        async function (source) {
+          // For each chunk of data
+          for await (const data of source) {
+            // Output the data
+            // @ts-ignore
+            console.log("received echo:", uint8ArrayToString(data.subarray()));
+          }
+        }
+      );
+    }, 3000);
+  }
