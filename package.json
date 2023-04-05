@@ -8,7 +8,7 @@
     "bob": "node ./_/src/nodes/bob.js",
     "charlie": "node ./_/src/nodes/charlie.js",
     "watch": "tsc -b -w",
-    "start": "node ./_/src/start.js"
+    "start": "node ./_/src2/start.js"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +28,7 @@
     "express": "^4.18.2",
     "fs-extra": "^11.1.1",
     "ipfs-core": "^0.18.0",
+    "ipfs-http-client": "^60.0.0",
     "node-fetch": "^3.3.1",
     "prettier": "^2.8.4",
     "pull-stream": "^3.7.0",
