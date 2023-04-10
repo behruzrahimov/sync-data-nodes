@@ -4,9 +4,9 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "alice": "node ./_/src/nodes/alice.js",
-    "bob": "node ./_/src/nodes/bob.js",
-    "charlie": "node ./_/src/nodes/charlie.js",
+    "alice": "node ./_/src2/nodes/alice.js",
+    "bob": "node ./_/src2/nodes/bob.js",
+    "charlie": "node ./_/src2/nodes/charlie.js",
     "watch": "tsc -b -w",
     "start": "node ./_/src2/start.js"
   },
@@ -24,11 +24,13 @@
   },
   "dependencies": {
     "@libp2p/peer-id": "^2.0.3",
+    "@libp2p/pubsub-peer-discovery": "^8.0.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "fs-extra": "^11.1.1",
     "ipfs-core": "^0.18.0",
     "ipfs-http-client": "^60.0.0",
+    "libp2p": "^0.43.4",
     "node-fetch": "^3.3.1",
     "prettier": "^2.8.4",
     "pull-stream": "^3.7.0",
