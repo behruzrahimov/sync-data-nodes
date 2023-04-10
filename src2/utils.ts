@@ -6,6 +6,7 @@ import map from "it-map";
 import * as lp from "it-length-prefixed";
 import { AppConfig } from "./config.js";
 import fse from "fs-extra";
+import { Libp2p } from "libp2p";
 
 export async function removeLockIfExist(name: string) {
   const lockfile = `${AppConfig.ipfs.repo}/${name}/repo.lock`;
@@ -34,25 +35,27 @@ export function generateRandomPort() {
 
 export async function sendRequest(
   ipfs: IPFS,
+  libp2p: Libp2p,
   redis: Redis,
   peerId: PeerId,
   type: string
 ) {
   console.log("sending stream message to", peerId.toString());
-  const stream = await (ipfs as any).libp2p.dialProtocol(peerId, "/echo/1.0.0");
-  await sendToStream(
+  const stream = await libp2p.dialProtocol(peerId, "/echo/1.0.0");
+  await writeStream(
     stream,
     JSON.stringify({
       type: type,
-      from: (ipfs as any).libp2p.peerId as PeerId,
+      from: await libp2p.peerId,
     })
   );
-  await streamToRead(stream, ipfs, redis);
+  await readStream(stream, ipfs, libp2p, redis);
 }
 
 export async function sendData(
   stream: any,
   ipfs: IPFS,
+  libp2p: Libp2p,
   peerId: string,
   redis: Redis,
   type: string
@@ -60,28 +63,28 @@ export async function sendData(
   console.log("sending stream message to", peerId);
   if (type === "get-dids") {
     const dids = JSON.parse(await redis.get("did-some"));
-    await sendToStream(
+    await writeStream(
       stream,
       JSON.stringify({
         type: "dids",
-        from: (ipfs as any).libp2p.peerId as PeerId,
+        from: await libp2p.peerId,
         data: dids,
       })
     );
   } else if (type === "get-comm") {
     const comm = JSON.parse(await redis.get("comm-some"));
-    await sendToStream(
+    await writeStream(
       stream,
       JSON.stringify({
         type: "comm",
-        from: (ipfs as any).libp2p.peerId as PeerId,
+        from: await libp2p.peerId,
         data: comm,
       })
     );
   }
 }
 
-export async function sendToStream(stream: any, message: string) {
+export async function writeStream(stream: any, message: string) {
   await pipe(
     [message],
     (source) => map(source, (string) => uint8ArrayFromString(string)),
@@ -90,7 +93,12 @@ export async function sendToStream(stream: any, message: string) {
   );
 }
 
-export async function streamToRead(stream: any, ipfs: IPFS, redis: Redis) {
+export async function readStream(
+  stream: any,
+  ipfs: IPFS,
+  libp2p: Libp2p,
+  redis: Redis
+) {
   await pipe(
     stream.source,
     lp.decode(),
@@ -100,10 +108,17 @@ export async function streamToRead(stream: any, ipfs: IPFS, redis: Redis) {
         // console.log("> " + msg.toString().replace("\n", ""));
         const messages = JSON.parse(msg);
         console.log("===============================================");
-        console.log("received message", messages);
+        console.log("received message", msg);
         console.log("===============================================\n");
         if (messages.type === "get-dids" || messages.type === "get-comm") {
-          await sendData(stream, ipfs, messages.from, redis, messages.type);
+          await sendData(
+            stream,
+            ipfs,
+            libp2p,
+            messages.from,
+            redis,
+            messages.type
+          );
         }
         if (messages.type === "dids" || messages.type === "comm") {
           const res = await redis.get(`${messages.type}-another`);
