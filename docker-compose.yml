@@ -5,10 +5,10 @@ version: '3.4'
 
 # It runs 3 cluster peers (cluster0, cluster1...) attached to kubo daemons
 # (ipfs0, ipfs1...) using the CRDT consensus component. Cluster peers
-# autodiscover themselves using mDNS on the docker internal network.
+# autoDiscover themselves using mDNS on the docker internal network.
 #
 # To interact with the cluster use "ipfs-cluster-ctl" (the cluster0 API port is
-# exposed to the locahost. You can also "docker exec -ti cluster0 sh" and run
+# exposed to the localhost). You can also "docker exec -ti cluster0 sh" and run
 # it from the container. "ipfs-cluster-ctl peers ls" should show all 3 peers a few
 # seconds after start.
 #
