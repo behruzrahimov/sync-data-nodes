@@ -1,4 +1,3 @@
-import { IPFS } from "ipfs-core";
 import { Redis } from "./redis.js";
 import { PeerId } from "@libp2p/interface-peer-id";
 import { pipe } from "it-pipe";
@@ -7,6 +6,7 @@ import * as lp from "it-length-prefixed";
 import { AppConfig } from "./config.js";
 import fse from "fs-extra";
 import { Libp2p } from "libp2p";
+import { IPFSHTTPClient } from "ipfs-http-client";
 
 export async function removeLockIfExist(name: string) {
   const lockfile = `${AppConfig.ipfs.repo}/${name}/repo.lock`;
@@ -34,7 +34,7 @@ export function generateRandomPort() {
 }
 
 export async function sendRequest(
-  ipfs: IPFS,
+  ipfs: IPFSHTTPClient,
   libp2p: Libp2p,
   redis: Redis,
   peerId: PeerId,
@@ -54,7 +54,7 @@ export async function sendRequest(
 
 export async function sendData(
   stream: any,
-  ipfs: IPFS,
+  ipfs: IPFSHTTPClient,
   libp2p: Libp2p,
   peerId: string,
   redis: Redis,
@@ -95,7 +95,7 @@ export async function writeStream(stream: any, message: string) {
 
 export async function readStream(
   stream: any,
-  ipfs: IPFS,
+  ipfs: IPFSHTTPClient,
   libp2p: Libp2p,
   redis: Redis
 ) {
@@ -166,7 +166,7 @@ function findIndex(str: string, key: string) {
   }
   return index;
 }
-export async function find(ipfs: IPFS, redis: Redis, key: string) {
+export async function find(ipfs: IPFSHTTPClient, redis: Redis, key: string) {
   let type = "";
   for (let i = 0; i < findIndex(key, ":"); i++) {
     type += key[i];
@@ -194,10 +194,49 @@ export async function find(ipfs: IPFS, redis: Redis, key: string) {
   return await getInIpfs(cid, ipfs);
 }
 
-async function getInIpfs(cid: string, ipfs: IPFS) {
+async function getInIpfs(cid: string, ipfs: IPFSHTTPClient) {
   const chunks = [];
   for await (const chunk of (ipfs as any).cat(cid)) {
     chunks.push(chunk);
   }
   return chunks.toString();
+}
+
+export async function synchronize(args: {
+  libp2p: Libp2p;
+  redis: Redis;
+  ipfs: IPFSHTTPClient;
+  topic: string;
+  peerId?: PeerId;
+}) {
+  const sync = async (peerId: PeerId) => {
+    console.log("===============================================");
+    console.log("Synchronizing with:", peerId.toString());
+    console.log("===============================================\n");
+
+    await sendRequest(args.ipfs, args.libp2p, args.redis, peerId, "get-dids");
+    await sendRequest(args.ipfs, args.libp2p, args.redis, peerId, "get-comm");
+  };
+
+  if (args.peerId) {
+    let syncAttempts = 10;
+    const interval = setInterval(async () => {
+      const peers = args.libp2p.pubsub.getSubscribers(args.topic);
+      const newSubscriber = peers.find(
+        (it) => args.peerId && it.toString() === args.peerId.toString()
+      );
+      if (newSubscriber) {
+        clearInterval(interval);
+        await sync(newSubscriber);
+      } else {
+        syncAttempts--;
+        if (syncAttempts === 0) clearInterval(interval);
+      }
+    }, 1000);
+  } else {
+    const peers = args.libp2p.pubsub.getSubscribers(args.topic);
+    for (let peerId of peers) {
+      await sync(peerId);
+    }
+  }
 }
