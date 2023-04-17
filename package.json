@@ -8,7 +8,7 @@
     "bob": "node ./_/src2/nodes/bob.js",
     "charlie": "node ./_/src2/nodes/charlie.js",
     "watch": "tsc -b -w",
-    "start": "node ./_/ipfs-replication/alice.js"
+    "start": "node ./_/index.js"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +27,7 @@
     "@libp2p/pubsub-peer-discovery": "^8.0.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "form-data": "^4.0.0",
     "fs-extra": "^11.1.1",
     "ipfs-cluster-api": "^0.0.9",
     "ipfs-core": "^0.18.0",
