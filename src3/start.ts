@@ -2,28 +2,29 @@ import { Redis } from "./redis.js";
 import { v4 as uuidv4 } from "uuid";
 import {
   delay,
-  find,
-  removeLockIfExist,
   readStream,
   uint8ArrayFromString,
   uint8ArrayToString,
   synchronize,
 } from "./utils.js";
 import { createNodeLibp2p } from "./create-libp2p.js";
-import { create } from "ipfs-http-client";
+import { Cluster } from "./cluster.js";
 
-export async function start(name: string, urlRedis: string, url: string) {
+export async function start(
+  name: string,
+  urlRedis: string,
+  urlCluster: string
+) {
   const topic = "news-ipfs-test";
   const redis = new Redis(urlRedis, name);
   await redis.init();
-  await removeLockIfExist(name);
-  const ipfs = create(new URL(url));
+  const cluster = new Cluster(urlCluster);
   const libp2p = await createNodeLibp2p();
 
   libp2p.addEventListener("peer:connect", async (evt) => {
     const peerId = evt.detail.remotePeer;
     console.log(`Connected to: ${peerId.toString()}`);
-    await synchronize({ libp2p, redis, ipfs, topic, peerId });
+    await synchronize({ libp2p, redis, topic, peerId });
   });
   libp2p.addEventListener("peer:disconnect", (evt) => {
     console.log(`Disconnected from: ${evt.detail.remotePeer}`);
@@ -38,12 +39,12 @@ export async function start(name: string, urlRedis: string, url: string) {
   //find data
   console.log("===============================================");
   console.log("find");
-  const f = await find(
-    ipfs,
-    redis,
-    "comm:98f19031-3222-4e63-be30-32e70752122a"
-  );
-  console.log(f);
+  // const f = await find(
+  //   ipfs,
+  //   redis,
+  //   "comm:98f19031-3222-4e63-be30-32e70752122a"
+  // );
+  // console.log(f);
   console.log("===============================================\n");
   //========================================================//
   //received messages
@@ -53,9 +54,9 @@ export async function start(name: string, urlRedis: string, url: string) {
     if (evt.detail.topic !== topic) return;
     const receivedMessage = uint8ArrayToString(evt.detail.data);
     const { key, data } = JSON.parse(receivedMessage);
-    const resIpfs = await ipfs.add(JSON.stringify(data));
-    console.log(resIpfs);
-    const cid = resIpfs.cid.toString();
+    const cid = await cluster.add(JSON.stringify(data));
+    await cluster.pin(cid);
+    console.log(cid);
     if (data.type === "comm") {
       await redis.addAll("comm-another", key);
     } else {
@@ -72,7 +73,7 @@ export async function start(name: string, urlRedis: string, url: string) {
 
   await libp2p.handle(
     "/echo/1.0.0",
-    async ({ stream }: any) => await readStream(stream, ipfs, libp2p, redis)
+    async ({ stream }: any) => await readStream(stream, libp2p, redis)
   );
 
   //send messages
@@ -84,8 +85,8 @@ export async function start(name: string, urlRedis: string, url: string) {
     age: 10,
   };
 
-  const dataDidDoc = await ipfs.add(JSON.stringify(didDoc));
-  const cidDidDoc = dataDidDoc.cid.toString();
+  const cidDidDoc = await cluster.add(JSON.stringify(didDoc));
+  await cluster.pin(cidDidDoc);
   const keyDidDoc = `did:${uuidv4()}`;
   await redis.add(keyDidDoc, JSON.stringify([cidDidDoc]));
   await redis.addAll(
@@ -100,8 +101,8 @@ export async function start(name: string, urlRedis: string, url: string) {
     nick: "Hacker",
     group: "programmers",
   };
-  const dataComm = await ipfs.add(JSON.stringify(community));
-  const cidComm = dataComm.cid.toString();
+  const cidComm = await cluster.add(JSON.stringify(community));
+  await cluster.pin(cidComm);
   const keyComm = `comm:${uuidv4()}`;
   await redis.add(keyComm, JSON.stringify([cidComm]));
   await redis.addAll(
