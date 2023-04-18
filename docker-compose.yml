@@ -77,3 +77,46 @@ services:
       - ./private/var/services/librum/ipfs/cluster2:/data/ipfs-cluster
     command:
       - "daemon --bootstrap  /ip4/172.23.0.3/tcp/9096/p2p/12D3KooWLLUsXWpQZsrKG5NMx8THqXtNaDEcXMwthXNbnKnwWFHn"
+
+  redis1:
+    image: "redis:latest"
+    command: redis-server
+    ports:
+      - "6379:6379"
+    volumes:
+      - $PWD/db/redis1/redis-data:/var/lib/redis
+      - $PWD/db/redis1/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      node_net:
+        ipv4_address: 172.28.1.4
+
+  redis2:
+    image: "redis:latest"
+    command: redis-server
+    ports:
+      - "6385:6379"
+    volumes:
+      - $PWD/db/redis2/redis-data:/var/lib/redis
+      - $PWD/db/redis2/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+        node_net:
+          ipv4_address: 172.28.1.5
+
+  redis3:
+    image: "redis:latest"
+    command: redis-server
+    ports:
+      - "6390:6379"
+    volumes:
+      - $PWD/db/redis3/redis-data:/var/lib/redis
+      - $PWD/db/redis3/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      node_net:
+        ipv4_address: 172.28.1.6
+
+networks:
+  node_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
