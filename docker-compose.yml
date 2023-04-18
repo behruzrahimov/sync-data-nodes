@@ -42,16 +42,17 @@ services:
       CLUSTER_PEERNAME: cluster1
       CLUSTER_SECRET: "34a320169537634ea2b304eac9970d0203d94b320f82f09d89e96c94e2c7950c"
       CLUSTER_IPFSHTTP_NODEMULTIADDRESS: /dns4/ipfs1/tcp/5001
+      CLUSTER_RESTAPI_HTTPLISTENMULTIADDRESS: /ip4/0.0.0.0/tcp/9094 # Expose API
       CLUSTER_CRDT_TRUSTEDPEERS: '*'
       CLUSTER_MONITORPINGINTERVAL: 2s # Speed up peer discovery
     ports:
-      - "9097:9097" # http api
-      - "9098:9098" # proxy api
-      - "9099:9099" # cluster swarm, other peers connect via this port
+      - "9097:9094" # http api
+      - "9098:9095" # proxy api
+      - "9099:9096" # cluster swarm, other peers connect via this port
     volumes:
       - ./private/var/services/librum/ipfs/cluster1:/data/ipfs-cluster
     command:
-      - "daemon --bootstrap  /ip4/172.23.0.3/tcp/9096/p2p/12D3KooWLLUsXWpQZsrKG5NMx8THqXtNaDEcXMwthXNbnKnwWFHn"
+      - "daemon --bootstrap /ip4/172.18.0.3/tcp/9096/p2p/12D3KooWB9hvPkkLTk71YTwPaAd2RNBrYUkVN5VeXvmY4kTkYGfF"
 
   ipfs2:
     container_name: ipfs2
@@ -67,16 +68,17 @@ services:
       CLUSTER_PEERNAME: cluster2
       CLUSTER_SECRET: "34a320169537634ea2b304eac9970d0203d94b320f82f09d89e96c94e2c7950c"
       CLUSTER_IPFSHTTP_NODEMULTIADDRESS: /dns4/ipfs2/tcp/5001
+      CLUSTER_RESTAPI_HTTPLISTENMULTIADDRESS: /ip4/0.0.0.0/tcp/9094 # Expose API
       CLUSTER_CRDT_TRUSTEDPEERS: '*'
       CLUSTER_MONITORPINGINTERVAL: 2s # Speed up peer discovery
     ports:
-      - "9100:9100" # http api
-      - "9101:9101" # proxy api
-      - "9102:9102" # cluster swarm, other peers connect via this port
+      - "9100:9094" # http api
+      - "9101:9095" # proxy api
+      - "9102:9096" # cluster swarm, other peers connect via this port
     volumes:
       - ./private/var/services/librum/ipfs/cluster2:/data/ipfs-cluster
     command:
-      - "daemon --bootstrap  /ip4/172.23.0.3/tcp/9096/p2p/12D3KooWLLUsXWpQZsrKG5NMx8THqXtNaDEcXMwthXNbnKnwWFHn"
+      - "daemon --bootstrap /ip4/172.18.0.3/tcp/9096/p2p/12D3KooWB9hvPkkLTk71YTwPaAd2RNBrYUkVN5VeXvmY4kTkYGfF"
 
   redis1:
     image: "redis:latest"

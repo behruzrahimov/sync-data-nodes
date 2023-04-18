@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import FormData from "form-data";
+import { Observable } from "rxjs";
 
 export class Cluster {
   readonly #url: string = "";

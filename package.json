@@ -4,11 +4,11 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "alice": "node ./_/ipfs-replication/nodes/alice.js",
-    "bob": "node ./_/ipfs-replication/nodes/bob.js",
-    "charlie": "node ./_/ipfs-replication/nodes/charlie.js",
+    "alice": "node ./_/src3/nodes/alice.js",
+    "bob": "node ./_/src3/nodes/bob.js",
+    "charlie": "node ./_/src3/nodes/charlie.js",
     "watch": "tsc -b -w",
-    "start": "node ./_/index.js"
+    "start": "node ./index.js"
   },
   "keywords": [],
   "author": "",
@@ -37,6 +37,7 @@
     "prettier": "^2.8.4",
     "pull-stream": "^3.7.0",
     "redis": "^4.6.5",
+    "rxjs": "^7.8.0",
     "uuid": "^9.0.0"
   }
 }
